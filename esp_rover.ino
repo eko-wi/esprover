@@ -23,7 +23,8 @@
 ESP8266WebServer server(80);
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
-#include <Servo.h>
+//board ini tidak ada power untuk servo
+//#include <Servo.h>
 #include <EEPROM.h>
 #include "classes.cpp"
 
@@ -125,10 +126,10 @@ const char ssid[] = MYSSID;
 const char password[] = MYPASS;
 
 inline void ledon() {
-  digitalWrite(2, HIGH);
+  digitalWrite(2, LOW);
 }
 inline void ledoff() {
-  digitalWrite(2, LOW);
+  digitalWrite(2, HIGH);
 }
 int charhextobyte(char c) {
   if (c >= '0' && c <= '9') {
@@ -340,10 +341,11 @@ function setmpwr(){
 )rawliteral";
 
 const char joypage[] PROGMEM = R"rawliteral(
-<h1>TOPScience wifi car</h1><br>
-<button id='m_en' onclick="enbtn()">Enable motors</button>
-<p id='event'></p><br>
-<p id='disp' style="font-size:xx-large"></p><br>
+<h2>TOPScience wifi car</h2><br>
+<button id='m_en' onclick="enbtn()">Enable motors</button><br>
+interval:<input type='text' id='interval' size=3 value='100'> ms<br>
+ymax:<input type='text' id='ymax' size=3 value='128'> xmax:<input type='text' id='xmax' size=3 value='128'><br>
+<p id='disp'></p><br>
 <canvas id="joy"></canvas><br>
 <a href="/">Use buttons</a>
 <script>
@@ -355,7 +357,7 @@ let m_en=false;
 let mb='bd';
 function motorenable(){
   fetch('/m?c=1');
-  intervID=setInterval(function(){send(xdata,ydata);},100);
+  intervID=setInterval(function(){send(xdata,ydata);},document.getElementById('interval').value);
 }
 function motordisable(){
   fetch('/m?c=0');
@@ -363,13 +365,9 @@ function motordisable(){
 }
 function enbtn(){
   m_en = !m_en;
-  if (m_en){
-    document.getElementById('m_en').innerText='Disable motors';
-    motorenable();
-  }else{
-    document.getElementById('m_en').innerText='Enable motors';
-    motordisable();
-  }
+  document.getElementById('m_en').innerText=m_en?'Disable motors':'Enable motors';
+  if (m_en){motorenable();}else{motordisable();}
+  drawbackground();
 }
 function send(x,y){
   fetch('/m?x=' + mb + x.toString(16) + y.toString(16)+'5a00');
@@ -378,16 +376,29 @@ function dispevent(str){
   document.getElementById('event').innerText=str;
 }
 function dispxy(x,y){
-  document.getElementById('disp').innerText='(' + x + ',' + y + ')';
+  document.getElementById('disp').innerText='('+x+','+y+')';
+}
+function tobyte(x){
+  return Math.max(Math.min(Math.round(x),255),0);
+}
+function marker(x,y){
+  ctx.clearRect(0,0,width, height);
+  drawbackground();
+  ctx.beginPath();
+  ctx.arc(x,y,20,0,Math.PI*2);
+  ctx.stroke();
 }
 function getpos(event){
-  var x=event.clientX || event.touches[0].clientX;
-  var y=event.clientY || event.touches[0].clientY;
+  let x=event.clientX || event.touches[0].clientX;
+  let y=event.clientY || event.touches[0].clientY;
   cx=x-joy.offsetLeft;
   cy=y-joy.offsetTop;
   if(inrange(cx,cy)){
-    xdata=128+Math.min(128,Math.max(-128,Math.round((cx-x0)*160/radius)));
-    ydata=128+Math.min(128,Math.max(-128,Math.round((y0-cy)*160/radius)));
+    marker(cx,cy);
+    let ymax=document.getElementById('ymax').value;
+    let xmax=document.getElementById('xmax').value;
+    xdata=tobyte(128+(cx-x0)*(160/radius)*xmax/128);
+    ydata=tobyte(128+(y0-cy)*(160/radius)*ymax/128);
     dispxy(xdata,ydata);
   }
 }
@@ -399,7 +410,7 @@ function drawbackground(){
   y0 = height/4;
   ctx.beginPath();
   ctx.arc(x0,y0,radius+20,0,Math.PI*2,true);
-  ctx.fillStyle='#ECE5E5';
+  ctx.fillStyle=m_en?'#E5ECE5':'#ECE5E5';
   ctx.fill();
 }
 function resize(){
@@ -414,6 +425,7 @@ function resize(){
 function center(event){
   xdata=128;
   ydata=128;
+  marker(x0,y0);
   dispxy(xdata,ydata);
 }
 
@@ -789,8 +801,8 @@ void setup() {
   
 //#ifdef USE_UDP
   //pakai UDP
-  //udp.begin(UDPPORT);
-  //Serial.println("Start UDP listening.");
+  udp.begin(UDPPORT);
+  Serial.println("Start UDP listening.");
   //udp.onPacket(handleudppacket);
 //#else
   //pakai http client
